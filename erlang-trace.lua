@@ -27,8 +27,15 @@ local pf_entry_type = ProtoField.uint8("erlang_trace.entry_type", "Entry type",
 local pf_binary_size = ProtoField.uint32("erlang_trace.binary_size", "Binary size")
 local pf_dropped_messages = ProtoField.uint32("erlang_trace.dropped_messages", "Number of dropped messages")
 
+local pf_pid = ProtoField.string("erlang_trace.pid", "Process id")
+local pf_event_type = ProtoField.string("erlang_trace.event_type", "Event type")
+local pf_module = ProtoField.string("erlang_trace.module", "Module")
+local pf_function = ProtoField.string("erlang_trace.function", "Function name")
+local pf_arity = ProtoField.uint8("erlang_trace.arity", "Arity")
+
 erlang_trace_proto.fields =
-   { pf_entry_type, pf_dropped_messages, pf_binary_size }
+   { pf_entry_type, pf_dropped_messages, pf_binary_size,
+     pf_pid, pf_event_type, pf_module, pf_function, pf_arity }
 
 local ef_unexpected = ProtoExpert.new("erlang_trace.unexpected", "Unexpected data",
 				      expert.group.UNDECODED, expert.severity.WARN)
@@ -37,6 +44,21 @@ erlang_trace_proto.experts =
    { ef_unexpected }
 
 local term_dissector = Dissector.get("erlterm")
+
+local function handle_mfa(mfa, pktinfo, tree)
+   tree:add(pf_module, mfa[1])
+   tree:add(pf_function, mfa[2])
+
+   local arity
+   if type(mfa[3]) == "number" then
+      arity = mfa[3]
+   else
+      -- it's an argument list
+      arity = #mfa[3]
+   end
+   tree:add(pf_arity, arity)
+   pktinfo.cols.info:append(" " .. mfa[1] .. ":" .. mfa[2] .. "/" .. arity)
+end
 
 local function decode_trace_data(value, pktinfo, tree)
    if type(value) ~= "table" then
@@ -47,8 +69,20 @@ local function decode_trace_data(value, pktinfo, tree)
       return
    end
 
+   tree:add(pf_pid, value[2])
+
    local entry_type = value[3]
    pktinfo.cols.info:set(entry_type)
+   tree:add(pf_event_type, entry_type)
+
+   if entry_type == "call" or entry_type == "return_to" then
+      -- Just one more element, M:F/A
+      handle_mfa(value[4], pktinfo, tree)
+   elseif entry_type == "return_from" then
+      -- M:F/A and return value
+      handle_mfa(value[4], pktinfo, tree)
+      -- TODO: how to deal with return value?
+   end
 end
 
 function erlang_trace_proto.dissector(tvbuf, pktinfo, root)
