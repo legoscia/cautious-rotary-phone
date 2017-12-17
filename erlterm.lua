@@ -264,7 +264,10 @@ dissect_term = function(tvbuf, tree)
    end
 end
 
-function erlang_term_proto.dissector(tvbuf, pktinfo, root)
+-- This function is global, so that it can be called directly from
+-- other modules, without going through Wireshark's dissector
+-- framework - which would lose return values beyond the first.
+function erlang_term_dissector(tvbuf, pktinfo, root)
    local tree = root:add(erlang_term_proto, tvbuf:range(0))
 
    local first_byte = tvbuf:range(0,1):uint()
@@ -276,3 +279,6 @@ function erlang_term_proto.dissector(tvbuf, pktinfo, root)
       return dissect_term(tvbuf, tree)
    end
 end
+
+erlang_term_proto.dissector = erlang_term_dissector
+

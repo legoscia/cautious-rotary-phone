@@ -30,7 +30,26 @@ local pf_dropped_messages = ProtoField.uint32("erlang_trace.dropped_messages", "
 erlang_trace_proto.fields =
    { pf_entry_type, pf_dropped_messages, pf_binary_size }
 
+local ef_unexpected = ProtoExpert.new("erlang_trace.unexpected", "Unexpected data",
+				      expert.group.UNDECODED, expert.severity.WARN)
+
+erlang_trace_proto.experts =
+   { ef_unexpected }
+
 local term_dissector = Dissector.get("erlterm")
+
+local function decode_trace_data(value, pktinfo, tree)
+   if type(value) ~= "table" then
+      tree:add_proto_expert_info(ef_unexpected, "Not a tuple")
+      return
+   elseif value[1] ~= "trace_ts" then
+      tree:add_proto_expert_info(ef_unexpected, "Expected 'trace_ts', got '" .. value[1] .. "'")
+      return
+   end
+
+   local entry_type = value[3]
+   pktinfo.cols.info:set(entry_type)
+end
 
 function erlang_trace_proto.dissector(tvbuf, pktinfo, root)
    pktinfo.cols.protocol:set("Erlang trace")
@@ -46,9 +65,11 @@ function erlang_trace_proto.dissector(tvbuf, pktinfo, root)
       -- Call the Erlang term dissector function directly instead of
       -- going through the Wireshark dissector machinery, in order to
       -- get access to the multiple return values.
-      local _, _, value = erlang_term_proto.dissector(tvbuf:range(5):tvb(), pktinfo, root)
+      local _, _, value = erlang_term_dissector(tvbuf:range(5):tvb(), pktinfo, root)
       if value then
-	 -- Do something clever here
+	 decode_trace_data(value, pktinfo, tree)
+      else
+	 tree:add_proto_expert_info(ef_unexpected, "No value?")
       end
    elseif t == 1 then
       tree:add(pf_dropped_messages, tvbuf:range(1, 4))
