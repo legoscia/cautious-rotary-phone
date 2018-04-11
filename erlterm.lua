@@ -113,7 +113,8 @@ local function dissect_small_tuple(tvbuf, tree)
    tree:add(pf_arity_8, tvbuf:range(0, 1))
 
    local arity = tvbuf:range(0, 1):uint()
-   local display = "{ " .. arity .. " elements }"
+   local display_elements = {}
+   local display_total_length = 0
    local pos = 1
    local elements = {}
    for i = 1, arity do
@@ -124,10 +125,24 @@ local function dissect_small_tuple(tvbuf, tree)
 
       local subtree = tree:add(erlang_term_proto, tvbuf:range(pos))
       subtree.text = "Tuple element"
-      local len, _, element = dissect_term(tvbuf:range(pos), subtree)
+      local len, element_display, element = dissect_term(tvbuf:range(pos), subtree)
+
       subtree.len = len
       pos = pos + len
       table.insert(elements, element)
+
+      -- Are we still trying to build a detailed display form of the tuple?
+      if display_total_length + string.len(element_display) < 50 then
+	 table.insert(display_elements, element_display)
+	 display_total_length = display_total_length + string.len(element_display)
+      end
+   end
+
+   local display
+   if display_total_length < 50 then
+      display = "{" .. table.concat(display_elements, ", ") .. "}"
+   else
+      display = "{ " .. arity .. " elements }"
    end
    -- The third return value is the tuple elements as an array
    return pos, display, elements
@@ -174,7 +189,8 @@ local function dissect_list(tvbuf, tree)
    tree:add(pf_list_len, tvbuf:range(0, 4))
 
    local list_len = tvbuf:range(0, 4):uint()
-   local display = "[ " .. list_len .. " elements ]"
+   local display_elements = {}
+   local display_total_length = 0
    local pos = 4
    local elements = {}
    for i = 1, list_len do
@@ -185,10 +201,16 @@ local function dissect_list(tvbuf, tree)
 
       local subtree = tree:add(erlang_term_proto, tvbuf:range(pos))
       subtree.text = "List element"
-      local len, _, element = dissect_term(tvbuf:range(pos), subtree)
+      local len, element_display, element = dissect_term(tvbuf:range(pos), subtree)
       subtree.len = len
       pos = pos + len
       table.insert(elements, element)
+
+      -- Are we still trying to build a detailed display form of the list?
+      if display_total_length + string.len(element_display) < 50 then
+	 table.insert(display_elements, element_display)
+	 display_total_length = display_total_length + string.len(element_display)
+      end
    end
 
    -- Finally the "tail"
@@ -199,6 +221,14 @@ local function dissect_list(tvbuf, tree)
    local subtree = tree:add(erlang_term_proto, tvbuf:range(pos))
    subtree.text = "Tail"
    local len = dissect_term(tvbuf:range(pos), subtree)
+
+   local display
+   if display_total_length < 50 then
+      display = "[" .. table.concat(display_elements, ", ") .. "]"
+   else
+      display = "[ " .. list_len .. " elements ]"
+   end
+
    -- The third return value is the list elements as an array
    return pos + len, display, elements
 end
