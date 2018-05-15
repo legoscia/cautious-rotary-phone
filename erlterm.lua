@@ -290,7 +290,7 @@ dissect_term = function(tvbuf, tree)
 	 unhandled_text = "Unhandled type: " .. type_byte
       end
       tree:add_proto_expert_info(ef_unhandled_type, unhandled_text)
-      return tvbuf:len()
+      return tvbuf:len(), unhandled_text
    end
 end
 
