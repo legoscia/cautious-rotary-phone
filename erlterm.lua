@@ -127,7 +127,6 @@ local function dissect_small_tuple(tvbuf, tree)
       subtree.text = "Tuple element"
       local len, element_display, element = dissect_term(tvbuf:range(pos), subtree)
 
-      subtree.len = len
       pos = pos + len
       table.insert(elements, element)
 
@@ -202,7 +201,6 @@ local function dissect_list(tvbuf, tree)
       local subtree = tree:add(erlang_term_proto, tvbuf:range(pos))
       subtree.text = "List element"
       local len, element_display, element = dissect_term(tvbuf:range(pos), subtree)
-      subtree.len = len
       pos = pos + len
       table.insert(elements, element)
 
@@ -281,6 +279,9 @@ dissect_term = function(tvbuf, tree)
       if display then
 	 tree:append_text(": " .. display)
       end
+      -- Explicitly set the length of the "tree", so that it spans
+      -- over the correct set of bytes in the UI.
+      tree.len = pos
       return 1 + pos, display, value
    else
       local unhandled_text
