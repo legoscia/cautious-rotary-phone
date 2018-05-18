@@ -184,6 +184,31 @@ local function dissect_pid(tvbuf, tree)
    return pos + 9, pid_display, pid_display
 end
 
+local function dissect_port(tvbuf, tree)
+   -- First, the node name, encoded as some kind of atom
+   local node_tree = tree:add(erlang_term_proto, tvbuf)
+   node_tree.text = "Node name"
+   local pos, node_name = dissect_term(tvbuf, node_tree)
+
+   if pos >= tvbuf:len() then
+      tree:add_proto_expert_info(ef_truncated)
+      return pos
+   end
+
+   -- Then, some numbers
+   tree:add(pf_id, tvbuf:range(pos, 4))
+   tree:add(pf_creation, tvbuf:range(pos + 4, 1))
+
+   local port_display
+   if node_name then
+      -- This is similar to how ports are displayed within Erlang,
+      -- but with an explicit node name instead of a number.
+      port_display = "#Port<" .. node_name .. "." .. tvbuf:range(pos, 4):uint() .. ">"
+   end
+   -- The third return value is the display form of the port
+   return pos + 5, port_display, port_display
+end
+
 local function dissect_new_reference(tvbuf, tree)
    -- First, the number of "ID" integers
    local len = tvbuf:range(0, 2):uint()
@@ -288,6 +313,7 @@ local term_functions = {
    [SMALL_TUPLE_EXT] = dissect_small_tuple,
    [ATOM_EXT] = dissect_atom,
    [PID_EXT] = dissect_pid,
+   [PORT_EXT] = dissect_port,
    [LIST_EXT] = dissect_list,
    [NIL_EXT] = dissect_nil,
    [SMALL_INTEGER_EXT] = dissect_small_integer,
