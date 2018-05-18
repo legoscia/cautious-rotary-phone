@@ -131,9 +131,9 @@ local function dissect_small_tuple(tvbuf, tree)
       table.insert(elements, element)
 
       -- Are we still trying to build a detailed display form of the tuple?
-      if element_display and display_total_length + string.len(element_display) < 50 then
+      display_total_length = display_total_length + string.len(element_display or "")
+      if element_display and display_total_length < 50 then
 	 table.insert(display_elements, element_display)
-	 display_total_length = display_total_length + string.len(element_display)
       end
    end
 
@@ -256,9 +256,9 @@ local function dissect_list(tvbuf, tree)
       table.insert(elements, element)
 
       -- Are we still trying to build a detailed display form of the list?
-      if element_display and display_total_length + string.len(element_display) < 50 then
+      display_total_length = display_total_length + string.len(element_display)
+      if element_display and display_total_length < 50 then
 	 table.insert(display_elements, element_display)
-	 display_total_length = display_total_length + string.len(element_display)
       end
    end
 
