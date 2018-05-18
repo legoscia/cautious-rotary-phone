@@ -184,6 +184,32 @@ local function dissect_pid(tvbuf, tree)
    return pos + 9, pid_display, pid_display
 end
 
+local function dissect_new_reference(tvbuf, tree)
+   -- First, the number of "ID" integers
+   local len = tvbuf:range(0, 2):uint()
+   local pos = 2
+
+   -- Then, the node name, encoded as some kind of atom
+   local node_tree = tree:add(erlang_term_proto, tvbuf:range(pos))
+   node_tree.text = "Node name"
+   local atom_len, node_name = dissect_term(tvbuf:range(pos), node_tree)
+   pos = pos + atom_len
+
+   local display = "#Ref<" .. node_name
+
+   -- Then, some numbers.  A 1-byte creation integer:
+   tree:add(pf_creation, tvbuf:range(pos, 1))
+   pos = pos + 1
+   -- And a variable number of 4-byte "ID" integers:
+   for i = 1, len do
+      tree:add(pf_id, tvbuf:range(pos, 4))
+      display = display .. "." .. tvbuf:range(pos, 4):uint()
+      pos = pos + 4
+   end
+   display = display .. ">"
+   return pos, display, display
+end
+
 local function dissect_list(tvbuf, tree)
    tree:add(pf_list_len, tvbuf:range(0, 4))
 
@@ -267,6 +293,7 @@ local term_functions = {
    [SMALL_INTEGER_EXT] = dissect_small_integer,
    [INTEGER_EXT] = dissect_integer,
    [STRING_EXT] = dissect_string,
+   [NEW_REFERENCE_EXT] = dissect_new_reference,
 }
 
 dissect_term = function(tvbuf, tree)
