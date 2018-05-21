@@ -13,7 +13,7 @@
 -- limitations under the License.
 
 -- Need to ensure that erlterm.lua is loaded first
-dofile(USER_DIR .. "plugins/erlterm.lua_")
+dofile(USER_DIR .. "plugins/erlterm.lua")
 
 -- Protocol dissector
 local erlang_trace_proto = Proto("erlang_trace", "Erlang trace entry")

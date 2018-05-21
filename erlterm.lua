@@ -12,6 +12,9 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 
+-- Don't load this file twice:
+if _G['erlang_term_proto'] then return end
+
 erlang_term_proto = Proto("erlterm", "Erlang binary term format")
 
 -- The "version number" should always be 131.  It is omitted in the
