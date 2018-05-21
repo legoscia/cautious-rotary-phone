@@ -128,6 +128,7 @@ local function dissect_small_tuple(tvbuf, tree)
    local arity = tvbuf:range(0, 1):uint()
    local display_elements = {}
    local display_total_length = 0
+   local elided_elements = 0
    local pos = 1
    local elements = {}
    for i = 1, arity do
@@ -147,15 +148,15 @@ local function dissect_small_tuple(tvbuf, tree)
       display_total_length = display_total_length + string.len(element_display or "")
       if element_display and display_total_length < max_subterm_display_length then
 	 table.insert(display_elements, element_display)
+      else
+	 elided_elements = elided_elements + 1
       end
    end
 
-   local display
-   if display_total_length < max_subterm_display_length then
-      display = "{" .. table.concat(display_elements, ", ") .. "}"
-   else
-      display = "{ " .. arity .. " elements }"
+   if elided_elements > 0 then
+      table.insert(display_elements, elided_elements .. " more elements")
    end
+   local display = "{" .. table.concat(display_elements, ", ") .. "}"
    -- The third return value is the tuple elements as an array
    return pos, display, elements
 end
