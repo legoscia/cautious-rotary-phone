@@ -106,6 +106,10 @@ local ef_truncated = ProtoExpert.new("erlterm.truncated", "Not enough data",
 
 erlang_term_proto.experts = { ef_unhandled_type, ef_truncated }
 
+-- At a certain length, we stop trying to display list and tuple
+-- elements in the "display" string, and instead just say "N elements"
+local max_subterm_display_length = 100
+
 local dissect_term
 
 -- All dissect_* functions return three values: the position where the
@@ -135,13 +139,13 @@ local function dissect_small_tuple(tvbuf, tree)
 
       -- Are we still trying to build a detailed display form of the tuple?
       display_total_length = display_total_length + string.len(element_display or "")
-      if element_display and display_total_length < 50 then
+      if element_display and display_total_length < max_subterm_display_length then
 	 table.insert(display_elements, element_display)
       end
    end
 
    local display
-   if display_total_length < 50 then
+   if display_total_length < max_subterm_display_length then
       display = "{" .. table.concat(display_elements, ", ") .. "}"
    else
       display = "{ " .. arity .. " elements }"
@@ -260,7 +264,7 @@ local function dissect_list(tvbuf, tree)
 
       -- Are we still trying to build a detailed display form of the list?
       display_total_length = display_total_length + string.len(element_display)
-      if element_display and display_total_length < 50 then
+      if element_display and display_total_length < max_subterm_display_length then
 	 table.insert(display_elements, element_display)
       end
    end
@@ -275,7 +279,7 @@ local function dissect_list(tvbuf, tree)
    local len = dissect_term(tvbuf:range(pos), subtree)
 
    local display
-   if display_total_length < 50 then
+   if display_total_length < max_subterm_display_length then
       display = "[" .. table.concat(display_elements, ", ") .. "]"
    else
       display = "[ " .. list_len .. " elements ]"
