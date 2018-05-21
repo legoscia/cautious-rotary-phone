@@ -85,6 +85,9 @@ local pf_arity_8 = ProtoField.uint8("erlterm.arity", "Arity")
 
 local pf_atom = ProtoField.string("erlterm.atom", "Atom")
 local pf_atom_len_16 = ProtoField.uint16("erlterm.atom_length", "Atom length")
+local pf_pid = ProtoField.string("erlterm.pid", "Process identifier")
+local pf_port = ProtoField.string("erlterm.port", "Port identifier")
+local pf_ref = ProtoField.string("erlterm.reference", "Reference")
 local pf_id = ProtoField.uint32("erlterm.id", "ID number")
 local pf_serial = ProtoField.uint32("erlterm.serial", "Serial number")
 local pf_creation = ProtoField.uint8("erlterm.creation", "Creation number")
@@ -97,8 +100,9 @@ local pf_binary_len = ProtoField.uint32("erlterm.binary_length", "Binary length"
 local pf_binary = ProtoField.string("erlterm.binary", "Binary")
 
 erlang_term_proto.fields =
-   { pf_version_number, pf_type, pf_arity_8, pf_atom, pf_atom_len_16,
-     pf_id, pf_serial, pf_creation, pf_list_len, pf_uint_8, pf_int_32,
+   { pf_version_number, pf_type, pf_arity_8, pf_arity_32, pf_atom, pf_atom_len_16,
+     pf_pid, pf_port, pf_ref, pf_id, pf_serial, pf_creation,
+     pf_list_len, pf_uint_8, pf_int_32,
      pf_string_len, pf_string, pf_binary_len, pf_binary }
 
 local ef_unhandled_type = ProtoExpert.new("erlterm.unhandled", "Unhandled type",
@@ -189,6 +193,7 @@ local function dissect_pid(tvbuf, tree)
       pid_display = "<" .. node_name .. "." .. tvbuf:range(pos, 4):uint()
 	 .. "." .. tvbuf:range(pos + 4, 4):uint() .. ">"
    end
+   tree:add(pf_pid, tvbuf:range(0, pos + 9), pid_display):set_generated(true)
    -- The third return value is the display form of the pid
    return pos + 9, pid_display, pid_display
 end
@@ -214,6 +219,7 @@ local function dissect_port(tvbuf, tree)
       -- but with an explicit node name instead of a number.
       port_display = "#Port<" .. node_name .. "." .. tvbuf:range(pos, 4):uint() .. ">"
    end
+   tree:add(pf_port, tvbuf:range(0, pos + 5), port_display):set_generated(true)
    -- The third return value is the display form of the port
    return pos + 5, port_display, port_display
 end
@@ -241,6 +247,7 @@ local function dissect_new_reference(tvbuf, tree)
       pos = pos + 4
    end
    display = display .. ">"
+   tree:add(pf_ref, tvbuf:range(0, pos), display):set_generated(true)
    return pos, display, display
 end
 
