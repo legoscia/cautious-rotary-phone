@@ -93,11 +93,13 @@ local pf_uint_8 = ProtoField.uint8("erlterm.integer", "Integer")
 local pf_int_32 = ProtoField.int32("erlterm.integer", "Integer")
 local pf_string_len = ProtoField.uint16("erlterm.string_length", "String length")
 local pf_string = ProtoField.string("erlterm.string", "String")
+local pf_binary_len = ProtoField.uint32("erlterm.binary_length", "Binary length")
+local pf_binary = ProtoField.string("erlterm.binary", "Binary")
 
 erlang_term_proto.fields =
    { pf_version_number, pf_type, pf_arity_8, pf_atom, pf_atom_len_16,
      pf_id, pf_serial, pf_creation, pf_list_len, pf_uint_8, pf_int_32,
-     pf_string_len, pf_string }
+     pf_string_len, pf_string, pf_binary_len, pf_binary }
 
 local ef_unhandled_type = ProtoExpert.new("erlterm.unhandled", "Unhandled type",
 					  expert.group.UNDECODED, expert.severity.NOTE)
@@ -316,6 +318,17 @@ local function dissect_string(tvbuf, tree)
    return len + 2, string.format("%q", str):gsub("\n", "n"), str
 end
 
+local function dissect_binary(tvbuf, tree)
+   tree:add(pf_binary_len, tvbuf:range(0, 4))
+
+   local len = tvbuf:range(0, 4):uint()
+   tree:add(pf_binary, tvbuf:range(4, len))
+   local str = tvbuf:range(4, len):string()
+   -- This will work fine as long as the binary looks like a string.
+   -- Let's see what happens if it's "just" binary data...
+   return len + 4, string.format("<<%q>>", str):gsub("\n", "n"), str
+end
+
 local term_functions = {
    [SMALL_TUPLE_EXT] = dissect_small_tuple,
    [ATOM_EXT] = dissect_atom,
@@ -326,6 +339,7 @@ local term_functions = {
    [SMALL_INTEGER_EXT] = dissect_small_integer,
    [INTEGER_EXT] = dissect_integer,
    [STRING_EXT] = dissect_string,
+   [BINARY_EXT] = dissect_binary,
    [NEW_REFERENCE_EXT] = dissect_new_reference,
 }
 
