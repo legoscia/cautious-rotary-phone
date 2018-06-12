@@ -52,11 +52,14 @@ local function handle_mfa(mfa, pktinfo, tree)
    local arity
    if type(mfa[3]) == "number" then
       arity = mfa[3]
-   else
+   elseif type(mfa[3]) == "table" then
       -- it's an argument list
       arity = #mfa[3]
+   else
+      -- it's something we failed to decode
+      arity = "?"
    end
-   tree:add(pf_arity, arity)
+   if type(arity) == "number" then tree:add(pf_arity, arity) end
    pktinfo.cols.info:append(" " .. mfa[1] .. ":" .. mfa[2] .. "/" .. arity)
 end
 
