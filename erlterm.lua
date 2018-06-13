@@ -94,6 +94,9 @@ local pf_creation = ProtoField.uint8("erlterm.creation", "Creation number")
 local pf_list_len = ProtoField.uint32("erlterm.list_length", "List length")
 local pf_uint_8 = ProtoField.uint8("erlterm.integer", "Integer")
 local pf_int_32 = ProtoField.int32("erlterm.integer", "Integer")
+local pf_bignum_len_8 = ProtoField.uint8("erlterm.bignum_length", "Bignum length")
+local pf_bignum_len_32 = ProtoField.uint32("erlterm.bignum_length", "Bignum length")
+local pf_bignum = ProtoField.string("erlterm.bignum", "Bignum")
 local pf_string_len = ProtoField.uint16("erlterm.string_length", "String length")
 local pf_string = ProtoField.string("erlterm.string", "String")
 local pf_binary_len = ProtoField.uint32("erlterm.binary_length", "Binary length")
@@ -103,6 +106,7 @@ erlang_term_proto.fields =
    { pf_version_number, pf_type, pf_arity_8, pf_arity_32, pf_atom, pf_atom_len_16,
      pf_pid, pf_port, pf_ref, pf_id, pf_serial, pf_creation,
      pf_list_len, pf_uint_8, pf_int_32,
+     pf_bignum_len_8, pf_bignum_len_32, pf_bignum,
      pf_string_len, pf_string, pf_binary_len, pf_binary }
 
 local ef_unhandled_type = ProtoExpert.new("erlterm.unhandled", "Unhandled type",
@@ -315,6 +319,39 @@ local function dissect_integer(tvbuf, tree)
    return 4, "" .. value, value
 end
 
+local function dissect_bignum(tvbuf, tree, nbytes)
+   -- We can't deal with bignums without including external libraries,
+   -- so let's just display them as hexadecimal numbers.
+   local sign = tvbuf:range(0, 1):uint()
+   local s = ""
+   -- Least significant bytes go first, so we prepend each new byte
+   for i = 1, nbytes do
+      s = string.format("%02x", tvbuf:range(i, 1):uint()) .. s
+   end
+   -- Finally base specifier and sign
+   if sign == 1 then
+      s = "-16#" .. s
+   else
+      s = "16#" .. s
+   end
+   tree:add(pf_bignum, tvbuf:range(0, nbytes + 1), s)
+   return nbytes + 1, s, s
+end
+
+local function dissect_small_bignum(tvbuf, tree)
+   local nbytes = tvbuf:range(0, 1):uint()
+   tree:add(pf_bignum_len_8, tvbuf:range(0, 1))
+   local pos, display, value = dissect_bignum(tvbuf:range(1), tree, nbytes)
+   return pos + 1, display, value
+end
+
+local function dissect_large_bignum(tvbuf, tree)
+   local nbytes = tvbuf:range(0, 4):uint()
+   tree:add(pf_bignum_len_32, tvbuf:range(0, 4))
+   local pos, display, value = dissect_bignum(tvbuf:range(4), tree, nbytes)
+   return pos + 4, display, value
+end
+
 local function dissect_string(tvbuf, tree)
    tree:add(pf_string_len, tvbuf:range(0, 2))
 
@@ -346,6 +383,8 @@ local term_functions = {
    [NIL_EXT] = dissect_nil,
    [SMALL_INTEGER_EXT] = dissect_small_integer,
    [INTEGER_EXT] = dissect_integer,
+   [SMALL_BIG_EXT] = dissect_small_bignum,
+   [LARGE_BIG_EXT] = dissect_large_bignum,
    [STRING_EXT] = dissect_string,
    [BINARY_EXT] = dissect_binary,
    [NEW_REFERENCE_EXT] = dissect_new_reference,
