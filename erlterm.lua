@@ -28,7 +28,9 @@ local INTEGER_EXT = 98
 local FLOAT_EXT = 99
 local REFERENCE_EXT = 101
 local PORT_EXT = 102
+local NEW_PORT_EXT = 89
 local PID_EXT = 103
+local NEW_PID_EXT = 88
 local SMALL_TUPLE_EXT = 104
 local LARGE_TUPLE_EXT = 105
 local MAP_EXT = 116
@@ -39,6 +41,7 @@ local BINARY_EXT = 109
 local SMALL_BIG_EXT = 110
 local LARGE_BIG_EXT = 111
 local NEW_REFERENCE_EXT = 114
+local NEWER_REFERENCE_EXT = 90
 local FUN_EXT = 117
 local NEW_FUN_EXT = 112
 local EXPORT_EXT = 113
@@ -55,8 +58,10 @@ local types = {
    [INTEGER_EXT] = "Integer",
    [FLOAT_EXT] = "Float (old)",
    [REFERENCE_EXT] = "Reference (old)",
-   [PORT_EXT] = "Port",
-   [PID_EXT] = "Process id",
+   [PORT_EXT] = "Port (old)",
+   [NEW_PORT_EXT] = "Port (new)",
+   [PID_EXT] = "Process identifier (old)",
+   [NEW_PID_EXT] = "Process identifier (new)",
    [SMALL_TUPLE_EXT] = "Small tuple",
    [LARGE_TUPLE_EXT] = "Large tuple",
    [MAP_EXT] = "Map",
@@ -67,6 +72,7 @@ local types = {
    [SMALL_BIG_EXT] = "Small bignum",
    [LARGE_BIG_EXT] = "Large bignum",
    [NEW_REFERENCE_EXT] = "Reference (new)",
+   [NEWER_REFERENCE_EXT] = "Reference (newer)",
    [FUN_EXT] = "Fun (old)",
    [NEW_FUN_EXT] = "Fun (new)",
    [EXPORT_EXT] = "External fun",
@@ -90,7 +96,7 @@ local pf_port = ProtoField.string("erlterm.port", "Port identifier")
 local pf_ref = ProtoField.string("erlterm.reference", "Reference")
 local pf_id = ProtoField.uint32("erlterm.id", "ID number")
 local pf_serial = ProtoField.uint32("erlterm.serial", "Serial number")
-local pf_creation = ProtoField.uint8("erlterm.creation", "Creation number")
+local pf_creation = ProtoField.uint32("erlterm.creation", "Creation number")
 local pf_list_len = ProtoField.uint32("erlterm.list_length", "List length")
 local pf_uint_8 = ProtoField.uint8("erlterm.integer", "Integer")
 local pf_int_32 = ProtoField.int32("erlterm.integer", "Integer")
@@ -203,6 +209,34 @@ local function dissect_pid(tvbuf, tree)
    return pos + 9, pid_display, pid_display
 end
 
+local function dissect_new_pid(tvbuf, tree)
+   -- First, the node name, encoded as some kind of atom
+   local node_tree = tree:add(erlang_term_proto, tvbuf)
+   node_tree.text = "Node name"
+   local pos, node_name = dissect_term(tvbuf, node_tree)
+
+   if pos >= tvbuf:len() then
+      tree:add_proto_expert_info(ef_truncated)
+      return pos
+   end
+
+   -- Then, some numbers
+   tree:add(pf_id, tvbuf:range(pos, 4))
+   tree:add(pf_serial, tvbuf:range(pos + 4, 4))
+   tree:add(pf_creation, tvbuf:range(pos + 8, 4))
+
+   local pid_display
+   if node_name then
+      -- This is similar to how pids are displayed within Erlang,
+      -- but with an explicit node name instead of a number.
+      pid_display = "<" .. node_name .. "." .. tvbuf:range(pos, 4):uint()
+	 .. "." .. tvbuf:range(pos + 4, 4):uint() .. ">"
+   end
+   tree:add(pf_pid, tvbuf:range(0, pos + 12), pid_display):set_generated(true)
+   -- The third return value is the display form of the pid
+   return pos + 12, pid_display, pid_display
+end
+
 local function dissect_port(tvbuf, tree)
    -- First, the node name, encoded as some kind of atom
    local node_tree = tree:add(erlang_term_proto, tvbuf)
@@ -229,6 +263,32 @@ local function dissect_port(tvbuf, tree)
    return pos + 5, port_display, port_display
 end
 
+local function dissect_new_port(tvbuf, tree)
+   -- First, the node name, encoded as some kind of atom
+   local node_tree = tree:add(erlang_term_proto, tvbuf)
+   node_tree.text = "Node name"
+   local pos, node_name = dissect_term(tvbuf, node_tree)
+
+   if pos >= tvbuf:len() then
+      tree:add_proto_expert_info(ef_truncated)
+      return pos
+   end
+
+   -- Then, some numbers
+   tree:add(pf_id, tvbuf:range(pos, 4))
+   tree:add(pf_creation, tvbuf:range(pos + 4, 4))
+
+   local port_display
+   if node_name then
+      -- This is similar to how ports are displayed within Erlang,
+      -- but with an explicit node name instead of a number.
+      port_display = "#Port<" .. node_name .. "." .. tvbuf:range(pos, 4):uint() .. ">"
+   end
+   tree:add(pf_port, tvbuf:range(0, pos + 8), port_display):set_generated(true)
+   -- The third return value is the display form of the port
+   return pos + 8, port_display, port_display
+end
+
 local function dissect_new_reference(tvbuf, tree)
    -- First, the number of "ID" integers
    local len = tvbuf:range(0, 2):uint()
@@ -245,6 +305,33 @@ local function dissect_new_reference(tvbuf, tree)
    -- Then, some numbers.  A 1-byte creation integer:
    tree:add(pf_creation, tvbuf:range(pos, 1))
    pos = pos + 1
+   -- And a variable number of 4-byte "ID" integers:
+   for i = 1, len do
+      tree:add(pf_id, tvbuf:range(pos, 4))
+      display = display .. "." .. tvbuf:range(pos, 4):uint()
+      pos = pos + 4
+   end
+   display = display .. ">"
+   tree:add(pf_ref, tvbuf:range(0, pos), display):set_generated(true)
+   return pos, display, display
+end
+
+local function dissect_newer_reference(tvbuf, tree)
+   -- First, the number of "ID" integers
+   local len = tvbuf:range(0, 2):uint()
+   local pos = 2
+
+   -- Then, the node name, encoded as some kind of atom
+   local node_tree = tree:add(erlang_term_proto, tvbuf:range(pos))
+   node_tree.text = "Node name"
+   local atom_len, node_name = dissect_term(tvbuf:range(pos), node_tree)
+   pos = pos + atom_len
+
+   local display = "#Ref<" .. node_name
+
+   -- Then, some numbers.  A 4-byte creation integer:
+   tree:add(pf_creation, tvbuf:range(pos, 4))
+   pos = pos + 4
    -- And a variable number of 4-byte "ID" integers:
    for i = 1, len do
       tree:add(pf_id, tvbuf:range(pos, 4))
@@ -378,7 +465,9 @@ local term_functions = {
    [SMALL_TUPLE_EXT] = dissect_small_tuple,
    [ATOM_EXT] = dissect_atom,
    [PID_EXT] = dissect_pid,
+   [NEW_PID_EXT] = dissect_new_pid,
    [PORT_EXT] = dissect_port,
+   [NEW_PORT_EXT] = dissect_new_port,
    [LIST_EXT] = dissect_list,
    [NIL_EXT] = dissect_nil,
    [SMALL_INTEGER_EXT] = dissect_small_integer,
@@ -388,6 +477,7 @@ local term_functions = {
    [STRING_EXT] = dissect_string,
    [BINARY_EXT] = dissect_binary,
    [NEW_REFERENCE_EXT] = dissect_new_reference,
+   [NEWER_REFERENCE_EXT] = dissect_newer_reference,
 }
 
 dissect_term = function(tvbuf, tree)
